@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <time.h>
 
-#define SECsince1970            946684800
+#define SECsince2000            946684800
 #define SECbyYEAR               31536000
 #define SECbyDAY                86400
 #define SECbyHOUR               3600
 #define SECbyMIN                60
 
+#define SECto2100               4102444800
+#define SECto2010               1262304000
 
 /**
  * @brief Fills a time structure from a timestamp
@@ -168,11 +170,11 @@ uint32_t common_calcTimestamp(uint32_t year, uint32_t month, uint32_t day, uint3
     uint32_t i, r;
     struct tm t;
 
-    for(i=1262307661; i<4294967296; i++)
+    for(i=SECto2010; i<SECto2100; i++)
     {
         if(i%10000000 == 0)
         {
-            printf("Made up to %u (%X) \n", i, i);
+            printf("Made up to %u (%d/%d/%d) \n", i, t.tm_mday, t.tm_mon, t.tm_year);
         }
 
         common_calcDate(i, &t);
