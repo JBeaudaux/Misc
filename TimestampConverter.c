@@ -165,33 +165,44 @@ uint32_t common_calcTimestamp(uint32_t year, uint32_t month, uint32_t day, uint3
  	return stamp;
  }
 
- int main()
- {
-    uint32_t i, r;
-    struct tm t;
+int main( )
+{
+    time_t i, r;
+    struct tm t_mine;
+    struct tm *t_system;
 
-    for(i=SECto2010; i<SECto2100; i++)
-    {
-        if(i%10000000 == 0)
-        {
-            printf("Made up to %u (%d/%d/%d) \n", i, t.tm_mday, t.tm_mon, t.tm_year);
+    for( i = SECsince2000; i < SECsince2100; i++ ) {
+        if( i % 10000000 == 0 ) {
+            printf( "Made up to %u (%02d/%02d/%04d) \n", i, t_mine.tm_mday, t_mine.tm_mon, t_mine.tm_year+2000 );
         }
 
-        common_calcDate(i, &t);
-        r = common_calcTimestamp(t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+        common_calcDate( i, &t_mine );
+        t_system = gmtime (&i);
+        r = common_calcTimestamp(t_mine.tm_year, t_mine.tm_mon, t_mine.tm_mday, t_mine.tm_hour, t_mine.tm_min, t_mine.tm_sec);
 
-        if(r != i)
-        {
-            printf("ERROR : %u (%X) != %u (%X) (!!!!) \n", i, i, r, r);
-            common_calcDate(i, &t);
-            printf("%d/%d/%d %d:%d:%d \n", t.tm_mday, t.tm_mon, t.tm_year, t.tm_hour, t.tm_min, t.tm_sec);
-            common_calcTimestamp(t.tm_year, t.tm_mon, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+/*
+            printf("%d %s\n", errno, strerror(errno));
+            printf("%d\n", i);
+            printf("%d/%d/%d %d:%d:%d %d \n", t_system->tm_year+1900, t_system->tm_mon+1, t_system->tm_mday, t_system->tm_hour, t_system->tm_min, t_system->tm_sec, t_system->tm_wday);
+*/
+        if(
+            ( t_mine.tm_year+100 != t_system->tm_year )
+            || ( t_mine.tm_mon != t_system->tm_mon+1 )
+            || ( t_mine.tm_mday != t_system->tm_mday )
+            || ( t_mine.tm_hour != t_system->tm_hour )
+            || ( t_mine.tm_min != t_system->tm_min )
+            || ( t_mine.tm_sec != t_system->tm_sec )
+            || ( t_mine.tm_wday != t_system->tm_wday )
+            || ( r != i )
+            ) {
+            printf( "ERROR : %u =! %u (!!!!) \n", i, r);
+            printf("%d/%d/%d %d:%d:%d  %d \n", t_mine.tm_year+2000, t_mine.tm_mon, t_mine.tm_mday, t_mine.tm_hour, t_mine.tm_min, t_mine.tm_sec, t_mine.tm_wday);
+            printf("%d/%d/%d %d:%d:%d  %d \n", t_system->tm_year+1900, t_system->tm_mon+1, t_system->tm_mday, t_system->tm_hour, t_system->tm_min, t_system->tm_sec, t_system->tm_wday);
 
             return -1;
         }
     }
 
-    printf("All dates OK!\n");
-
+    printf( "All dates OK!\n" );
     return 0;
- }
+}
