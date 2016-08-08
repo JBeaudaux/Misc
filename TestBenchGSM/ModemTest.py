@@ -453,7 +453,7 @@ class ModemTest():
 	def get_bin_file_proof(self):
 		url = self.get_bin_file.split(" ")[1]
 		print colored(url, 'blue')
-		proof = open("proof/%d_Proof_%s"%(self.time_start, self.bin_file), "wb")
+		proof = open("proof/%d_Desktop_%s"%(self.time_start, self.bin_file), "wb")
 		proof.write(urllib2.urlopen(url).read())
 		proof.close()
 
@@ -462,7 +462,7 @@ class ModemTest():
 		self.RXdataMode = True
 		self.RXpart = 0
 		self.RXstart = int(time.time())
-		self.filebin = open("proof/%d_%s"%(self.time_start, self.bin_file), "wb")
+		self.filebin = open("proof/%d_Device_%s"%(self.time_start, self.bin_file), "wb")
 		print colored(self.filebin, "magenta")
 
 		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"

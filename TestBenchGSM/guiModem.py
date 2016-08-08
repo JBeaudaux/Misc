@@ -349,7 +349,7 @@ class windowControl(Tkinter.Tk):
 			self.datacallStatus['fg']='red' # couleur de fond
 
 	def UpdateGPScoordinates(self, lati, longi, satellites):
-		if lati != 0 and longi != 0:
+		if lati != 0 and longi != 0 and lati < 180 and longi < 180:
 			self.latitudeGPS = lati - self.movement
 			self.longitudeGPS = longi
 			self.satellitesGPS = satellites
