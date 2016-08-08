@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-__version__ = "0.1"
+__version__ = "0.2"
 
 from threading import Timer
 import time, math, os, sys
@@ -49,7 +49,7 @@ class windowControl(Tkinter.Tk):
 	ProgressbarVal = 0
 
 
-	def __init__(self,parent, option=0):
+	def __init__(self, parent, option=0):
 		Tkinter.Tk.__init__(self, parent)
 		self.parent = parent
 		self.title("FRED PA-1 - GSM demonstrator - V%s"%(__version__))
@@ -319,8 +319,6 @@ class windowControl(Tkinter.Tk):
 
 		self.myprogressbar['maximum'] = 100
 		self.myprogressbar['value'] = self.ProgressbarVal
-		print "Progress = %d / 100"%(self.ProgressbarVal)
-
 
 	def setModem(self, modem):
 		self.modemClass = modem
@@ -380,8 +378,6 @@ class windowControl(Tkinter.Tk):
 	def UpdatePortion(self, val):
 		self.myprogressbar['maximum'] = 100
 		self.myprogressbar['value'] = val
-
-		print "Progress = %f / 100"%(val)
 
 	def UpdateConsolePrompt(self, text):
 		self.consolePrompt.insert(Tkinter.INSERT, text)

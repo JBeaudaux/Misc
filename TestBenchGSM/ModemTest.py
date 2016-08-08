@@ -39,6 +39,8 @@ class ModemTest():
 
 		self.filebin = None
 
+		self.consoleProofFile = None
+
 		# Get configuration
 		config = SafeConfigParser()
 		config.read('config.ini')
@@ -121,44 +123,56 @@ class ModemTest():
 		mif = "88 00 00 00 00 01 CC 00 A5"
 		mif = mif.replace(" ", "")
 		mif = mif.decode('hex')
-		print("----->Master Identification Frame")
+
+		self.printAsProof("-----> Master Identification Frame", "blue")
+		self.printAsProof(mif.encode('hex'), "blue")
+
 		self.serport.write(mif)
-		print mif.encode('hex')
 
 	# Master Transfer Mode Frame
 	def send_cmd_mtmf(self):
 		mtmf = "88 00 04 00 01 02 CC 02 01 00 03 CC A5"
 		mtmf = mtmf.replace(" ", "")
 		mtmf = mtmf.decode('hex')
-		print("----->Master Transfer Mode Frame")
+
+		self.printAsProof("-----> Master Transfer Mode Frame", "blue")
+		self.printAsProof(mtmf.encode('hex'), "blue")
+
 		self.serport.write(mtmf)
-		print mtmf.encode('hex')
 
 	# Master KeepAlive Frame
 	def send_cmd_mkaf(self):
 		mkaf = "88 00 00 00 02 03 CC 00 A5"
 		mkaf = mkaf.replace(" ", "")
 		mkaf = mkaf.decode('hex')
-		print("----->Master Keep Alive Frame")
+
+		self.printAsProof("-----> Master Keep Alive Frame", "blue")
+		self.printAsProof(mkaf.encode('hex'), "blue")
+
 		self.serport.write(mkaf)
-		print mkaf.encode('hex')
 
 	# 1300 ECALL ON/OFF
 	def send_cmd_ecall(self,state):
 		ecall_on  = "88 00 03 00 03 04 CC 13 00 01 CC A5"
 		ecall_off = "88 00 03 00 03 04 CC 13 00 00 CC A5"
 		if state ==  1:
-			print("-----> ECall ON")
 			ecall_on = ecall_on.replace(" ", "")
 			ecall_on = ecall_on.decode('hex')
+
+			self.printAsProof("-----> ECall ON", "blue")
+			self.printAsProof(ecall_on.encode('hex'), "blue")
+			
 			self.serport.write(ecall_on)
-			print colored(ecall_on.encode('hex'), "blue")
+
+
 		elif state == 0:
-			print("-----> ECall OFF")
 			ecall_off = ecall_off.replace(" ", "")
 			ecall_off = ecall_off.decode('hex')
+
+			self.printAsProof("-----> ECall OFF", "blue")
+			self.printAsProof(ecall_off.encode('hex'), "blue")
+
 			self.serport.write(ecall_off)
-			print colored(ecall_off.encode('hex'), "blue")
 
 	# 1301 VOICE CALL ON/OFF
 	def send_cmd_voicecall(self,state):
@@ -166,7 +180,6 @@ class ModemTest():
 		voice_call_on  = "88 00 1C 00 03 04 CC 13 01 01 "
 
 		if state ==  1:
-			print("-----> Voice Call ON")
 			i=0
 			while i <= len(self.voice_num)-1:
 				voice_call_on += self.voice_num[i].encode('hex')
@@ -178,10 +191,12 @@ class ModemTest():
 			voice_call_on += "CC A5"
 			voice_call_on = voice_call_on.replace(" ", "")
 			voice_call_on = voice_call_on.decode('hex')
+
+			self.printAsProof("-----> Voice Call ON", "blue")
+			self.printAsProof(voice_call_on.encode('hex'), "blue")
+
 			self.serport.write(voice_call_on)
-			print colored(voice_call_on.encode('hex'), "blue")
 		elif state == 0:
-			print("-----> Voice Call OFF")
 			i=0
 			while i <= len(self.voice_num)-1:
 				voice_call_off += self.voice_num[i].encode('hex')
@@ -193,8 +208,11 @@ class ModemTest():
 			voice_call_off += "CC A5"
 			voice_call_off = voice_call_off.replace(" ", "")
 			voice_call_off = voice_call_off.decode('hex')
+
+			self.printAsProof("-----> Voice Call OFF", "blue")
+			self.printAsProof(voice_call_off.encode('hex'), "blue")
+
 			self.serport.write(voice_call_off)
-			print colored(voice_call_off.encode('hex'), "blue")
 
 	# 1302 DATA CALL ON/OFF
 	def send_cmd_data_call(self,state):
@@ -204,15 +222,19 @@ class ModemTest():
 		if state ==  1:
 			data_call_on = data_call_on.replace(" ", "")
 			data_call_on = data_call_on.decode('hex')
-			print("-----> Data Call ON")
+
+			self.printAsProof("-----> Data Call ON", "blue")
+			self.printAsProof(data_call_on.encode('hex'), "blue")
+
 			self.serport.write(data_call_on)
-			print colored(data_call_on.encode('hex'), "blue")
 		elif state == 0:
 			data_call_off =data_call_off.replace(" ", "")
 			data_call_off =data_call_off.decode('hex')
+
+			self.printAsProof("-----> Data Call OFF", "blue")
+			self.printAsProof(data_call_off.encode('hex'), "blue")
+
 			self.serport.write(data_call_off)
-			print("-----> Data Call OFF")
-			print colored(data_call_off.encode('hex'), "blue")
 
 	# 1303 GET GPS Position
 	def send_cmd_gps(self,state):
@@ -222,15 +244,20 @@ class ModemTest():
 		if state ==  1:
 			gps_on = gps_on.replace(" ", "")
 			gps_on = gps_on.decode('hex')
-			print("-----> GPS Position ON")
+
+			self.printAsProof("-----> GPS Position ON", "blue")
+			self.printAsProof(gps_on.encode('hex'), "blue")
+
 			self.serport.write(gps_on)
-			print colored(gps_on.encode('hex'), "blue")
+
 		elif state == 0:
 			gps_off = gps_off.replace(" ", "")
 			gps_off = gps_off.decode('hex')
+
+			self.printAsProof("-----> GPS Position OFF", "blue")
+			self.printAsProof(gps_off.encode('hex'), "blue")
+
 			self.serport.write(gps_off)
-			print("-----> GPS Position OFF")
-			print colored(gps_off.encode('hex'), "blue")
 
 	# 1305 SEND SMS
 	def send_cmd_sms(self):
@@ -362,16 +389,18 @@ class ModemTest():
 		wait_data = "88 00 05 00 03 04 CC 13 07 00 FF 09 CC A5"
 		wait_data = wait_data.replace(" ", "")
 		wait_data = wait_data.decode('hex')
-		print("-----> Get Data Frame")
+
+		self.printAsProof("-----> GET_DATA_FRAME [1307]", "blue")
+		self.printAsProof(wait_data.encode('hex'), "blue")
+
 		self.serport.write(wait_data)
-		print colored(wait_data.encode('hex'), "blue")
 
 	#1309
 	def send_cmd_get_config(self):
 		get_config = "88 00 02 00 03 04 CC 13 09 CC A5"
 		get_config = get_config.replace(" ","")
 		get_config = get_config.decode('hex')
-		print("-----> Get init settings")
+		print("-----> Get init settings [1309]")
 		self.serport.write(get_config)
 		print get_config.encode('hex')
 
@@ -380,7 +409,7 @@ class ModemTest():
 		get_modem_status = "88 00 02 00 03 04 CC 13 56 CC A5"
 		get_modem_status = get_modem_status.replace(" ", "")
 		get_modem_status = get_modem_status.decode('hex')
-		print("-----> Get Modem Status")
+		print("-----> Get Modem Status [1356]")
 		self.serport.write(get_modem_status)
 		print colored(get_modem_status.encode('hex'), "blue")
 
@@ -389,7 +418,7 @@ class ModemTest():
 		get_ecall_data = "88 00 02 00 03 04 CC 13 57 CC A5"
 		get_ecall_data = get_ecall_data.replace(" ", "")
 		get_ecall_data = get_ecall_data.decode('hex')
-		print("-----> Get Ecall Data")
+		print("-----> Get Ecall Data [1357]")
 		self.serport.write(get_ecall_data)
 		print colored(get_ecall_data.encode('hex'), "blue")
 
@@ -424,7 +453,7 @@ class ModemTest():
 	def get_bin_file_proof(self):
 		url = self.get_bin_file.split(" ")[1]
 		print colored(url, 'blue')
-		proof = open("proof/%d_myproof.bin"%(self.time_start), "wb")
+		proof = open("proof/%d_Proof_%s"%(self.time_start, self.bin_file), "wb")
 		proof.write(urllib2.urlopen(url).read())
 		proof.close()
 
@@ -433,7 +462,7 @@ class ModemTest():
 		self.RXdataMode = True
 		self.RXpart = 0
 		self.RXstart = int(time.time())
-		self.filebin = open("from_sema/%d_%s"%(self.time_start, self.bin_file), "wb")
+		self.filebin = open("proof/%d_%s"%(self.time_start, self.bin_file), "wb")
 		print colored(self.filebin, "magenta")
 
 		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
@@ -450,9 +479,11 @@ class ModemTest():
 		request += "CC A5"
 		request = request.replace(" ", "")
 		request = request.decode('hex')
-		print("-----> Send Resquest \n %s")%(self.get_bin_file)
+
+		self.printAsProof("-----> Send Resquest GET : %s"%(self.get_bin_file), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
 		self.serport.write(request)
-		print colored(request.encode('hex'), "blue")
 
 	# 13AA SEND Data
 	def send_cmd_get_info(self):
@@ -470,9 +501,11 @@ class ModemTest():
 		request += "CC A5"
 		request = request.replace(" ", "")
 		request = request.decode('hex')
-		print("-----> Send Resquest \n %s")%(self.get_info)
+
+		self.printAsProof("-----> Send Resquest GET : %s"%(self.get_info), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
 		self.serport.write(request)
-		print colored(request.encode('hex'), "blue")
 
 	# 13AA SEND Data
 	def send_cmd_put_autotest(self):
@@ -490,9 +523,11 @@ class ModemTest():
 		request += "CC A5"
 		request = request.replace(" ", "")
 		request = request.decode('hex')
-		print("-----> Send Resquest \n %s")%(self.put_autotest)
+
+		self.printAsProof("-----> Send Resquest PUT : %s"%(self.put_autotest), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
 		self.serport.write(request)
-		print colored(request.encode('hex'), "blue")
 
 
 	def send_cmd_put_card_bin(self):
@@ -513,9 +548,11 @@ class ModemTest():
 		request += "CC A5"
 		request = request.replace(" ", "")
 		request = request.decode('hex')
-		print("-----> Send Resquest \n %s")%(self.put_card_bin)
+
+		self.printAsProof("-----> Send Resquest PUT : %s"%(self.put_card_bin), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
 		self.serport.write(request)
-		print colored(request.encode('hex'), "blue")
 
 
 	def manage_command(self):
@@ -565,8 +602,8 @@ class ModemTest():
 				self.PutRequest_SendFiles()
 			else :
 				self.serport.write(inp)
-				print("Bad command or args:")
-				print (inp)
+				
+				self.printAsProof("Bad command or args: %s"%(inp), "red")
 				self.displayClass.UpdateConsolePrompt("Bad command or args: %s\n"%(inp))
 
 	def manage_orders(self):
@@ -620,7 +657,6 @@ class ModemTest():
 			print colored(len(content), 'blue')
 			print colored(comm.encode('hex'), 'yellow')
 
-			print 
 			self.displayClass.UpdatePortion((part*100)/((os.stat(self.PutFile).st_size) / 1024))
 
 			self.serport.write(comm)
@@ -656,89 +692,92 @@ class ModemTest():
 		if(myframe[0] == '88'.decode('hex')):
 			if mystate == self.STATE_MIF:
 				if myframe.encode('hex')[10] == '8' and myframe.encode('hex')[11] == '1':
-					print("<-----Slave Identification Frame")
-					print myframe.encode('hex')
+					self.printAsProof("<----- Slave Identification Frame [1381]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
+					
 					self.send_cmd_mtmf()
 					return self.STATE_MTMF
 
 			if mystate == self.STATE_MTMF:
 				if myframe.encode('hex')[10] == '8' and myframe.encode('hex')[11] == '2':
-					print("<-----Slave Transfer Mode Ack Frame")
-					print myframe.encode('hex')
+					self.printAsProof("<----- Slave Transfer Mode Ack Frame [1382]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
+
 					self.send_cmd_mkaf()
 					return self.STATE_MKA
 
 			if mystate == self.STATE_MKA:
 				if myframe.encode('hex')[10] == '8' and myframe.encode('hex')[11] == '3':
+					# Attempt to initiate data call as soon as turned ON
 					self.send_cmd_data_call(1)
 					return self.STATE_CONNECTED
 
 			if mystate == self.STATE_CONNECTED:
 				if myframe.encode('hex')[16] == '5' and myframe.encode('hex')[17] == '5':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMVAL_GPS_POSITION")
 					sat = int(myframe[9].encode('hex'))
-					print("Nb Satellite %s"%(sat))
-
-					print("Date %s/%s/%s %s:%s:%s"%(myframe[12].encode('hex'), myframe[11].encode('hex'), myframe[10].encode('hex'), myframe[13].encode('hex'), myframe[14].encode('hex'), myframe[15].encode('hex')))
 					
 					a = myframe[19].encode('hex')+myframe[18].encode('hex')+myframe[17].encode('hex')+myframe[16].encode('hex')
 					lat = int(a,16)/100000.
-					print("Latitude  %f"%(lat))
 					
 					a = myframe[23].encode('hex')+myframe[22].encode('hex')+myframe[21].encode('hex')+myframe[20].encode('hex')
 					lon = int(a,16)/100000.
-					print("Longitude  %f"%(lon))
+
+					self.printAsProof("<----- GSMVAL_GPS_POSITION  [1355]", "yellow")
+					self.printAsProof("Latitude %f ; Longitude %f ; Satellites %d"%(lat, lon, sat), "yellow")
+					self.printAsProof("Date %s/%s/%s %s:%s:%s"%(myframe[12].encode('hex'), myframe[11].encode('hex'), myframe[10].encode('hex'), myframe[13].encode('hex'), myframe[14].encode('hex'), myframe[15].encode('hex')), "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 					self.displayClass.UpdateGPScoordinates(lat, lon, sat)
 					self.displayClass.UpdateConsolePrompt("[%d] GPS coord. : %f / %f ; %s sat. ; %s/%s/%s %s:%s:%s \n"%(time.time() - self.time_start, lat, lon, sat, myframe[12].encode('hex'), myframe[11].encode('hex'), myframe[10].encode('hex'), myframe[13].encode('hex'), myframe[14].encode('hex'), myframe[15].encode('hex')))
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '0':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_ONOFF_E_CALL")
-					print("OFF (0) / ON (1) :  %s" %(myframe[9].encode('hex')))
+					self.printAsProof("<----- GSMCMD_ONOFF_E_CALL  [1300]", "yellow")
+					self.printAsProof("OFF (0) / ON (1) :  %s"%(myframe[9].encode('hex')), "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '1':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_ONOFF_VOICE_CALL")
-					print("OFF (0) / ON (1) :  %s" %(myframe[9].encode('hex')))
+					self.printAsProof("<----- GSMCMD_ONOFF_VOICE_CALL  [1301]", "yellow")
+					self.printAsProof("OFF (0) / ON (1) :  %s"%(myframe[9].encode('hex')), "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '2':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_ONOFF_DATA_CALL")
-					print("OFF (0) / ON (1) :  %s" %(myframe[9].encode('hex')))
+					self.printAsProof("<----- GSMCMD_ONOFF_DATA_CALL [1302]", "yellow")
+					self.printAsProof("OFF (0) / ON (1) :  %s"%(myframe[9].encode('hex')), "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '3':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_GET_ONOFF_GPS")
+					self.printAsProof("<----- GSMCMD_GET_ONOFF_GPS [1303]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
+
 					self.displayClass.UpdateGPSstatus(True)
 
 				elif myframe.encode('hex')[16] == '5' and myframe.encode('hex')[17] == '6':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_GET_MODEM_STATUS")
+					self.printAsProof("<----- GSMCMD_GET_MODEM_STATUS [1356]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
+
 					if(myframe[9].encode('hex') == '00'):
-						print colored("E-call in progress    :  %s"%(myframe[9].encode('hex')), 'red')
+						self.printAsProof("E-call in progress    :  %s"%(myframe[9].encode('hex')), 'red')
 					else:
-						print colored("E-call in progress    :  %s"%(myframe[9].encode('hex')), 'green')
+						self.printAsProof("E-call in progress    :  %s"%(myframe[9].encode('hex')), 'green')
 
 					if(myframe[11].encode('hex') == '00'):
-						print colored("Voice call in progress:  %s"%(myframe[11].encode('hex')), 'red')
+						self.printAsProof("Voice call in progress:  %s"%(myframe[11].encode('hex')), 'red')
 					else:
-						print colored("Voice call in progress:  %s"%(myframe[11].encode('hex')), 'green')
+						self.printAsProof("Voice call in progress:  %s"%(myframe[11].encode('hex')), 'green')
 
 					if(myframe[13].encode('hex') == '00'):
-						print colored("Data call in progress :  %s"%(myframe[13].encode('hex')), 'red')
+						self.printAsProof("Data call in progress :  %s"%(myframe[13].encode('hex')), 'red')
 					else:
-						print colored("Data call in progress :  %s"%(myframe[13].encode('hex')), 'green')
+						self.printAsProof("Data call in progress :  %s"%(myframe[13].encode('hex')), 'green')
 
 					self.displayClass.Update_Connections(myframe[9].encode('hex') == '01', myframe[11].encode('hex') == '01', myframe[13].encode('hex') == '01')
 					self.displayClass.UpdateConsolePrompt("[%d] E-call %s - Voice call %s - Data call %s \n"%(time.time() - self.time_start, myframe[9].encode('hex'), myframe[11].encode('hex'), myframe[13].encode('hex')))
 
-					print("E-call com duration   :  %s" %(myframe[10].encode('hex')))
-					print("Voice call duration   :  %s" %(myframe[12].encode('hex')))
-					print("Amount of transf  data:  %s" %(myframe[14].encode('hex')))
-					print("Network strenght      :  %s" %(myframe[16].encode('hex')))
-					print("Netwok provider       :  %s" %(myframe[17:17+32]))
+					print("E-call com duration   :  %s"%(myframe[10].encode('hex')))
+					print("Voice call duration   :  %s"%(myframe[12].encode('hex')))
+					print("Amount of transf  data:  %s"%(myframe[14].encode('hex')))
+					print("Network strenght      :  %s"%(myframe[16].encode('hex')))
+					print("Network provider      :  %s"%(myframe[17:17+32]))
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '9':###1309 cfg query
 					print("RX--------------------------->:  %f" %ticks)
@@ -753,20 +792,20 @@ class ModemTest():
 					print("ECALL    :  %s" %(myframe[218:218+25]))
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '5':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_SEND_SMS")
+					self.printAsProof("<----- GSMCMD_SEND_SMS [1305]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '6':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_SET_CONF_HEADER")
+					self.printAsProof("<----- GSMCMD_SET_CONF_HEADER [1306]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '0' and myframe.encode('hex')[17] == '7':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_wait_data")
+					self.printAsProof("<----- GSMCMD_WAIT_DATA [1307]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 				elif myframe.encode('hex')[16] == '5' and myframe.encode('hex')[17] == '7':#13 57
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMCMD_GET_ECALL_DATA")
+					self.printAsProof("<----- GSMCMD_GET_ECALL_DATA [1357]", "yellow")
+
 					print("CONTROL  :  %s" %(myframe[10].encode('hex')))   #1
 					print("VID      :  %s" %(myframe[11:31]))#20
 					a1 = myframe[31].encode('hex')+myframe[32].encode('hex')+myframe[33].encode('hex')+myframe[34].encode('hex')
@@ -786,9 +825,13 @@ class ModemTest():
 					print("SERVER   :  %s" %(myframe[44:48].encode('hex'))) #4
 					print("VAD      :  %s" %(myframe[48:48+102].encode('hex'))) #4
 
+					self.printAsProof(myframe.encode('hex'), "yellow")
+
 				elif myframe.encode('hex')[16] == 'a' and myframe.encode('hex')[17] == 'a':
-					print("RX--------------------------->:  %f  -- %d"%(ticks, self.frame_counter))
-					print("<-----_GSMDATA_SEND_DATA_ACK")
+					#print("RX--------------------------->:  %f  -- %d"%(ticks, self.frame_counter))
+					#print("<-----_GSMDATA_SEND_DATA_ACK")
+					self.printAsProof("<----- GSMDATA_SEND_DATA_ACK [13aa]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 
 					if(self.TXcardbinMode == True):
 						self.dataAckResult = True
@@ -799,8 +842,9 @@ class ModemTest():
 						self.send_cmd_wait_data()
 
 				elif myframe.encode('hex')[16] == 'a' and myframe.encode('hex')[17] == 'b':
-					print("RX--------------------------->:  %f" %ticks)
-					print("<-----_GSMDATA_SLAVE_TO_MASTER")
+					self.printAsProof("<----- GSMDATA_SLAVE_TO_MASTER [13ab]", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
+
 					a1=myframe[9].encode('hex')+myframe[10].encode('hex');#+myframe[41].encode('hex')+myframe[42].encode('hex')
 					t=int(a1,16)
 					if(t>0):
@@ -811,48 +855,53 @@ class ModemTest():
 							data = myResponse.split('\r\n\r\n')[1]
 							self.filebin.write(data)
 
-							print colored(header, 'yellow')
+							print colored(header, 'magenta')
 							elems = header.split('\r\n')
 							for n in elems:
 								if "Content-Length" in n:
 									self.RXtotlen = int(n.split(" ")[1])
 
 							self.RXpart += 1
-							print colored("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart ), 'red')
+							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart), "magenta")
 
 							self.displayClass.UpdatePortion((self.RXpart*100)/(self.RXtotlen / (t-3)))
 
 						elif(self.RXdataMode == True):
 							self.filebin.write(myframe[11:11+t])
 							self.RXpart += 1
-							print colored("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart ), 'red')
+							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart), "magenta")
 
 							self.displayClass.UpdatePortion((self.RXpart*100)/(self.RXtotlen / (t-3)))
 						
 						self.frame_counter+= 1
-						print("RX--------------------------->:  %f " %ticks )
-						#print("%s" %(myframe[11:11+t]))
 						if("100 Continue" in myframe and self.TXcardbinMode == True):
 							self.continueResult = True
+							self.printAsProof("100 Continue", "yellow")
 						else:
 							self.send_cmd_wait_data()
 					else:
 						self.frame_counter = 0
-						print "13ab len=0"
+						self.printAsProof("13ab len=0", "yellow")
 				else:
-					print("<-----_UNKNOWN FRAME")
-				print myframe.encode('hex')
+					self.printAsProof("<----- UNKNOWN_FRAME", "yellow")
+					self.printAsProof(myframe.encode('hex'), "yellow")
 		else:
 			#Not 128Prot Frame
 			print myframe
 			if mystate == self.STATE_WAIT or  mystate == self.STATE_CONNECTED:
 				if "aed start" in myframe:
-					print("Boot time = %f - %f = %f s " %(time.time(),self.time_start,time.time() - self.time_start - 3))
+					self.printAsProof("Schiller GSM started : Boot time = %f s"%(time.time() - self.time_start), "magenta")
+
 					self.send_cmd_mif()
 					return self.STATE_MIF
 				elif "CONNECT0" in myframe:
 					print("CONNECTED--------------------> :  %f" %ticks)
 		return mystate
+
+
+	def printAsProof(self, line, color):
+		print colored(line, color)
+		self.consoleProofFile.write("[%d] %s\n"%(time.time() - self.time_start, line))
 
 	def setDisplay(self, display):
 		self.displayClass = display
@@ -868,6 +917,8 @@ class ModemTest():
 
 		print ("Start time = %f"%self.time_start)
 		self.displayClass.UpdateConsolePrompt("[0] Schiller GSM testbench ID - %d \n"%(self.time_start))
+
+		self.consoleProofFile = open("proof/%d_consoleProof.data"%(self.time_start), "wb")
 
 		# Thread keybord command
 		keyboardThread = Thread(target=self.manage_command)
@@ -898,6 +949,10 @@ class ModemTest():
 	def ActionShutdown(self):
 		if self.filebin != None:
 			self.filebin.close()
+
+		if self.consoleProofFile != None:
+			self.consoleProofFile.close()
+
 		print("User request : interrupt received, exit")
 		os._exit(-1)
 
