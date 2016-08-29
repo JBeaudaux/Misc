@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""ModemTest: Software designed to perform PAD-12 modem"""
-__author__ ="Mouhamed NDIAYE"
-__version__ = "0.1"
-__email__ = "mouhamed.ndiaye@schiller.fr"
+"""ModemProto: Class for 128PROT communication with Schiller GSM"""
+__author__ ="Julien Beaudaux"
+__version__ = "0.2"
+__email__ = "julien.beaudaux@schiller.fr"
 
 import sys, os, serial, time, base64
 import datetime
@@ -14,32 +14,56 @@ from serial.tools.list_ports import comports
 
 import urllib2
 
-class ModemTest():
+
+# The protocol used is 128PROT
+# The frames are in the following form, with 2 characters being one byte (as in Hexa)
+#   88   AAAA  BBBB  CC  DD  EEEE  FFFF......  GG  A5
+# The frame start (SOF) and frame end (EOF) are always respectively 88 and A5 
+# AAAA : The "Length of Data" (LOD) field is the total length of the FFFF field
+# BBBB : The "Frame counter" (FCT) field is an incremental value of the frame sent for this session
+#  CC  : The "Frame type" (FTY) field refers to the role of the frame in the handshake phase
+#        It can be 1 (Identification Frames), 2 (Transfer Mode Frames), 3 (KeepAlive Frames) or 4 (GSM protocol data frames)
+#  DD  : The "Header CRC" (HCRC), is the CRC of the fields AAAA, BBBB and CC
+# EEEE : The "Data Identifier" (DI) field represents the GSM protocol command/value type. It is used only when CC is 4.
+# FFFF : The "Data" field contains the GSM protocol command/value additional data. Its size is variable. It is used only when CC is 4.
+#  GG  : The "Data CRC" (DCRC), is the CRC of the fields EEEE and FFFF
+
+
+class ModemProto():
 	def __init__(self):
-		self.TXcardbinMode  = False
-		self.RXdataMode     = False
+		self.TXcardbinMode   = False
+		self.TXautotestMode  = False
+		self.RXdataMode      = False
 
-		self.dataAckResult  = False
-		self.continueResult = False
-		self.RXpart         = 0
-		self.RXtotlen       = 0
-		self.RXstart        = 0
+		self.dataAckResult    = False
+		self.continueResult   = False
+		self.responseNeeded   = False
+		self.httpResponseCode = -1
+		self.HTTPattempts      = 0
 
-		self.TXdelay        = 0.3
+		self.RXpart           = 0
+		self.RXtotlen         = 0
+		self.RXstart          = 0
 
-		self.time_start = 0
-		self.frame_counter = 0
-		self.PutFile = "to_sema/card.bin"
+		self.TXdelay          = 0.3
+
+		self.time_start       = 0
+		self.frame_counter    = 0
+		self.PutFile          = "to_sema/card.bin"
+		self.AutotestFile     = "to_sema/autotestHTML.html"
+
 		#State machine states
-		self.STATE_WAIT     = 0
-		self.STATE_MIF      = 1
-		self.STATE_MTMF     = 2
-		self.STATE_MKA      = 3
-		self.STATE_CONNECTED= 4
+		self.STATE_WAIT       = 0
+		self.STATE_MIF        = 1
+		self.STATE_MTMF       = 2
+		self.STATE_MKA        = 3
+		self.STATE_CONNECTED  = 4
 
-		self.filebin = None
+		self.filebin          = None
 
 		self.consoleProofFile = None
+
+		self.crcCalc = Crc8()
 
 		# Get configuration
 		config = SafeConfigParser()
@@ -69,15 +93,23 @@ class ModemTest():
 			self.get_bin_file = "GET http://%s:%s/SUS/public/v1/image/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/octet-stream; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n "%(self.url_server, self.http_port, self.app_id,self.ver_id,self.bin_file, self.url_server, self.http_port, key )
 			self.get_xml_file = "GET http://%s:%s/SUS/public/v1/settingset/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/xml; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n "%(self.url_server, self.http_port, self.app_id,self.ver_id,self.xml_file, self.url_server, self.http_port, key )
 			self.get_info     = "GET http://%s:%s/SUS/public/v1/info HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: text/plain; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n"%(self.url_server, self.http_port, self.url_server, self.http_port, key )
-			self.put_card_bin = "PUT http://%s:%s/SemaConverter/CardBin HTTP/1.1\r\nHost: %s:%s \r\nAccept: */*\r\nContent-Type: application/octet-stream\r\nExpect: 100-continue"%(self.url_server, self.http_port, self.url_server, self.http_port)
-			self.put_autotest = "POST http:/%s:%s//SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-Length: 494\r\ncontent-type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127000000000\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.1.1\", \"shortMessage\": \"Test MND\"}'"%(self.url_server, self.http_port, self.url_server, self.http_port, key )
+			self.get_manifest = "GET http://%s:%s/SUS/public/v1/manifest/%s/vid/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: text/plain; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n"%(self.url_server, self.http_port, self.app_id, self.ver_id, self.url_server, self.http_port, key)
+			
+			self.put_keepalive = "PUT http://%s:%s/SemaServer/public/v2/devices/alive HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-type: application/json; charset=UTF-8\r\nContent-Length: 228\r\nAuthorization: Basic %s\r\n\r\n{\"serialNumber\": \"127999999999\", \"applicationId\": \"2.16.756.5.25.4.6.2.1\", \"deviceId\": \"127999999999\", \"model\": \"FRED PA-1\", \"swVersion\": \"01.01B06\", \"hwVersion\": \"301\", \"location\": {\"longitude\": \"7.0\", \"latitude\": \"49.023651\"}}"%(self.url_server, self.http_port, self.url_server, self.http_port, key )
+			self.put_card_bin  = "PUT http://%s:%s/SemaConverter/CardBin HTTP/1.1\r\nHost: %s:%s \r\nAccept: */*\r\nContent-Type: application/octet-stream\r\nExpect: 100-continue\r\n"%(self.url_server, self.http_port)
+			self.post_autotest = "POST /SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept: */*\r\nAccept-Encoding: identity\r\ncontent-Type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127999999999\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.1.1\", \"shortMessage\": \"Test MND\"}"%(self.url_server, self.http_port, self.url_server, self.http_port, key )
+		#	self.post_autotest = "POST http://%s:%s/SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-Length: 481\r\ncontent-type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127999999999\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.2.1\", \"shortMessage\": \"Test MND\"}"%(self.url_server, self.http_port, self.url_server, self.http_port, key )
 
 		else:
-			self.get_bin_file = "GET https://%s:%s/SUS/public/v1/image/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/octet-stream; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n "%(self.url_server, self.https_port, self.app_id,self.ver_id,self.bin_file, self.url_server, self.https_port, key )
-			self.get_xml_file = "GET https://%s:%s/SUS/public/v1/settingset/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/xml; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n "%(self.url_server, self.https_port, self.app_id,self.ver_id,self.xml_file, self.url_server, self.https_port, key )
+			self.get_bin_file = "GET https://%s:%s/SUS/public/v1/image/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/octet-stream; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n"%(self.url_server, self.https_port, self.app_id,self.ver_id,self.bin_file, self.url_server, self.https_port, key )
+			self.get_xml_file = "GET https://%s:%s/SUS/public/v1/settingset/%s/%s/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: application/xml; charset=UTF-8\r\nAuthorization: Basic %s \r\n\r\n"%(self.url_server, self.https_port, self.app_id,self.ver_id, self.xml_file, self.url_server, self.https_port, key )
 			self.get_info     = "GET https://%s:%s/SUS/public/v1/info HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: text/plain; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n"%(self.url_server, self.https_port, self.url_server, self.https_port, key )
-			self.put_card_bin = "PUT https://%s:%s/SemaConverter/CardBin HTTP/1.1\r\nHost: %s:%s \r\nAccept: */*\r\nContent-Type: application/octet-stream\r\nExpect: 100-continue"%(self.url_server, self.https_port, self.url_server, self.http_port)
-			self.put_autotest = "POST https:/%s:%s//SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-Length: 494\r\ncontent-type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127000000000\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.1.1\", \"shortMessage\": \"Test MND\"}'"%(self.url_server, self.https_port, self.url_server, self.https_port, key )
+			self.get_manifest = "GET https://%s:%s/SUS/public/v1/manifest/%s/vid/%s HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\ncontent-type: text/plain; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n"%(self.url_server, self.https_port, self.app_id, self.ver_id, self.url_server, self.https_port, key)
+			
+			self.put_keepalive = "PUT https://%s:%s/SemaServer/public/v2/devices/alive HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-type: application/json; charset=UTF-8\r\nContent-Length: 228\r\nAuthorization: Basic %s\r\n\r\n{\"serialNumber\": \"127999999999\", \"applicationId\": \"2.16.756.5.25.4.6.2.1\", \"deviceId\": \"127999999999\", \"model\": \"FRED PA-1\", \"swVersion\": \"01.01B06\", \"hwVersion\": \"301\", \"location\": {\"longitude\": \"7.0\", \"latitude\": \"49.023651\"}}"%(self.url_server, self.https_port, self.url_server, self.https_port, key)
+			self.put_card_bin  = "PUT https://%s:%s/SemaConverter/CardBin HTTP/1.1\r\nHost: %s:%s \r\nAccept: */*\r\nContent-Type: application/octet-stream\r\nExpect: 100-continue\r\n"%(self.url_server, self.https_port, self.url_server, self.https_port)
+			self.post_autotest = "POST /SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept: */*\r\nAccept-Encoding: identity\r\nContent-Type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\nExpect: 100-continue\r\n"%(self.url_server, self.https_port, key )# Content-Length: 494\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127000000000\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.1.1\", \"shortMessage\": \"Test MND\"}"%(self.url_server, self.https_port, self.url_server, self.https_port, key )
+		#	self.post_autotest = "POST https://%s:%s/SemaServer/public/v2/devices/message HTTP/1.1\r\nHost: %s:%s\r\nAccept-Encoding: identity\r\nContent-Length: 481\r\ncontent-type: application/json; charset=UTF-8\r\nAuthorization: Basic %s\r\n\r\n{\"level\": \"INFO\", \"serialNumber\": \"127999999999\", \"message\": \"<!DOCTYPE html>\\n<html lang=\\\"en\\\">\\n<head>\\n\\t<meta charset=\\\"UTF-8\\\">\\n\\t<title></title>\\n</head>\\n<body>\\n\\t<h1>Test Result</h1>\\n\\t<p>Device State</p>\\n\\t<ul>\\n\\t\\t<li><a href=\\\"google.com\\\">un</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">deux</a></li>\\n\\t\\t<li><a href=\\\"google.com\\\">trois</a></li>\\n\\t</ul>\\n</body>\\n</html>\\n\", \"subject\": \"Test\", \"applicationId\": \"2.16.756.5.25.4.6.2.1\", \"shortMessage\": \"Test MND\"}"%(self.url_server, self.https_port, self.url_server, self.https_port, key )
 
 
 	def read_frame(self):
@@ -105,7 +137,7 @@ class ModemTest():
 						c1=c.encode('hex')
 						len0=int(c1,16)
 						i+=1
-						print len0
+						#print len0
 					elif(i==2):
 						c1=c.encode('hex')
 						len0=len0*256+int(c1,16)
@@ -118,10 +150,87 @@ class ModemTest():
 				break
 		return bytes(line)
 
+
+	def forgeNewFrame(self, FTY, DI, DATA, retransmit=False):
+		if False == retransmit:
+			self.frame_counter += 1
+		
+		forgedFrame = "88"
+
+		dataZone = DI + DATA
+
+		myLod = hex((len(dataZone) / 2))[2:]
+		myLod = '{:0>4}'.format(myLod) 
+		forgedFrame += myLod
+
+		frameCnt = hex(self.frame_counter)[2:]
+		frameCnt = '{:0>4}'.format(frameCnt)
+		forgedFrame += frameCnt
+
+		forgedFrame += FTY
+
+		myHcrc = hex(self.crcCalc.digest(forgedFrame))[2:]
+		myHcrc = '{:0>2}'.format(myHcrc)
+		self.crcCalc.resetCRC()
+		forgedFrame += myHcrc
+
+		myDcrc = hex(self.crcCalc.digest(dataZone))[2:]
+		myDcrc = '{:0>2}'.format(myDcrc)
+		self.crcCalc.resetCRC()
+
+		forgedFrame += dataZone
+		forgedFrame += myDcrc
+
+		forgedFrame += "A5"
+
+		if DI == '04':
+			self.responseNeeded = True
+
+		return forgedFrame
+
+	def forgeBinaryFrame(self, DATA, retransmit=False):
+		if False == retransmit:
+			self.frame_counter += 1
+
+		forgedFrame = "88"
+
+		myDATAlen = hex((len(DATA)))[2:]
+		myDATAlen = '{:0>4}'.format(myDATAlen) 
+
+		dataZone = "13AA" + myDATAlen + DATA.encode('hex')
+
+		myLod = hex((len(dataZone) / 2))[2:]
+		myLod = '{:0>4}'.format(myLod) 
+		forgedFrame += myLod
+
+		frameCnt = hex(self.frame_counter)[2:]
+		frameCnt = '{:0>4}'.format(frameCnt)
+		forgedFrame += frameCnt
+
+		forgedFrame += "04"
+
+		myHcrc = hex(self.crcCalc.digest(forgedFrame))[2:]
+		myHcrc = '{:0>2}'.format(myHcrc)
+		self.crcCalc.resetCRC()
+		forgedFrame += myHcrc
+
+		myDcrc = hex(self.crcCalc.digest(dataZone))[2:]
+		myDcrc = '{:0>2}'.format(myDcrc)
+		self.crcCalc.resetCRC()
+
+		forgedFrame += dataZone
+		forgedFrame += myDcrc
+
+		forgedFrame += "A5"
+
+		return forgedFrame
+
+
 	# Master Identification Frame
 	def send_cmd_mif(self):
-		mif = "88 00 00 00 00 01 CC 00 A5"
-		mif = mif.replace(" ", "")
+		#mif = "88 00 00 00 00 01 CC 00 A5"
+		#mif = mif.replace(" ", "")
+		mif = self.forgeNewFrame("01", "", "")
 		mif = mif.decode('hex')
 
 		self.printAsProof("-----> Master Identification Frame", "blue")
@@ -131,8 +240,9 @@ class ModemTest():
 
 	# Master Transfer Mode Frame
 	def send_cmd_mtmf(self):
-		mtmf = "88 00 04 00 01 02 CC 02 01 00 03 CC A5"
-		mtmf = mtmf.replace(" ", "")
+		#mtmf = "88 00 04 00 01 02 CC 02 01 00 03 CC A5"
+		#mtmf = mtmf.replace(" ", "")
+		mtmf = self.forgeNewFrame("02", "0201", "0003")
 		mtmf = mtmf.decode('hex')
 
 		self.printAsProof("-----> Master Transfer Mode Frame", "blue")
@@ -142,8 +252,9 @@ class ModemTest():
 
 	# Master KeepAlive Frame
 	def send_cmd_mkaf(self):
-		mkaf = "88 00 00 00 02 03 CC 00 A5"
-		mkaf = mkaf.replace(" ", "")
+		#mkaf = "88 00 00 00 02 03 CC 00 A5"
+		#mkaf = mkaf.replace(" ", "")
+		mkaf = self.forgeNewFrame("03", "", "")
 		mkaf = mkaf.decode('hex')
 
 		self.printAsProof("-----> Master Keep Alive Frame", "blue")
@@ -153,10 +264,8 @@ class ModemTest():
 
 	# 1300 ECALL ON/OFF
 	def send_cmd_ecall(self,state):
-		ecall_on  = "88 00 03 00 03 04 CC 13 00 01 CC A5"
-		ecall_off = "88 00 03 00 03 04 CC 13 00 00 CC A5"
 		if state ==  1:
-			ecall_on = ecall_on.replace(" ", "")
+			ecall_on = self.forgeNewFrame("04", "1300", "01")
 			ecall_on = ecall_on.decode('hex')
 
 			self.printAsProof("-----> ECall ON", "blue")
@@ -166,7 +275,7 @@ class ModemTest():
 
 
 		elif state == 0:
-			ecall_off = ecall_off.replace(" ", "")
+			ecall_off = self.forgeNewFrame("04", "1300", "00")
 			ecall_off = ecall_off.decode('hex')
 
 			self.printAsProof("-----> ECall OFF", "blue")
@@ -176,20 +285,20 @@ class ModemTest():
 
 	# 1301 VOICE CALL ON/OFF
 	def send_cmd_voicecall(self,state):
-		voice_call_off = "88 00 1C 00 03 04 CC 13 01 00 "
-		voice_call_on  = "88 00 1C 00 03 04 CC 13 01 01 "
-
 		if state ==  1:
+			voiceCall_data = "01"
+
 			i=0
 			while i <= len(self.voice_num)-1:
-				voice_call_on += self.voice_num[i].encode('hex')
+				voiceCall_data += self.voice_num[i].encode('hex')
 				i += 1
+			
 			i=0
 			while i < 25 - len(self.voice_num):
-				voice_call_on += "00 "
+				voiceCall_data += "00"
 				i+=1
-			voice_call_on += "CC A5"
-			voice_call_on = voice_call_on.replace(" ", "")
+
+			voice_call_on = self.forgeNewFrame("04", "1301", voiceCall_data)
 			voice_call_on = voice_call_on.decode('hex')
 
 			self.printAsProof("-----> Voice Call ON", "blue")
@@ -197,16 +306,19 @@ class ModemTest():
 
 			self.serport.write(voice_call_on)
 		elif state == 0:
+			voiceCall_data = "00"
+
 			i=0
 			while i <= len(self.voice_num)-1:
-				voice_call_off += self.voice_num[i].encode('hex')
+				voiceCall_data += self.voice_num[i].encode('hex')
 				i += 1
+			
 			i=0
 			while i < 25 - len(self.voice_num):
-				voice_call_off += "00 "
+				voiceCall_data += "00"
 				i+=1
-			voice_call_off += "CC A5"
-			voice_call_off = voice_call_off.replace(" ", "")
+			
+			voice_call_off = self.forgeNewFrame("04", "1301", voiceCall_data)
 			voice_call_off = voice_call_off.decode('hex')
 
 			self.printAsProof("-----> Voice Call OFF", "blue")
@@ -216,11 +328,8 @@ class ModemTest():
 
 	# 1302 DATA CALL ON/OFF
 	def send_cmd_data_call(self,state):
-		data_call_on  = "88 00 03 00 03 04 CC 13 02 01 CC A5 "
-		data_call_off = "88 00 03 00 03 04 CC 13 02 00 CC A5 "
-
 		if state ==  1:
-			data_call_on = data_call_on.replace(" ", "")
+			data_call_on = self.forgeNewFrame("04", "1302", "01")
 			data_call_on = data_call_on.decode('hex')
 
 			self.printAsProof("-----> Data Call ON", "blue")
@@ -228,7 +337,7 @@ class ModemTest():
 
 			self.serport.write(data_call_on)
 		elif state == 0:
-			data_call_off =data_call_off.replace(" ", "")
+			data_call_off = self.forgeNewFrame("04", "1302", "00")
 			data_call_off =data_call_off.decode('hex')
 
 			self.printAsProof("-----> Data Call OFF", "blue")
@@ -237,12 +346,10 @@ class ModemTest():
 			self.serport.write(data_call_off)
 
 	# 1303 GET GPS Position
+	# Data : XX YY ZZ - XX = ON/OFF (01/00) - YY ZZ = Transfer interval
 	def send_cmd_gps(self,state):
-		gps_on  = "88 00 05 00 03 04 CC 13 03 01 00 10 CC A5"
-		gps_off = "88 00 05 00 03 04 CC 13 03 00 00 60 CC A5"
-
 		if state ==  1:
-			gps_on = gps_on.replace(" ", "")
+			gps_on = self.forgeNewFrame("04", "1303", "010010")
 			gps_on = gps_on.decode('hex')
 
 			self.printAsProof("-----> GPS Position ON", "blue")
@@ -251,7 +358,7 @@ class ModemTest():
 			self.serport.write(gps_on)
 
 		elif state == 0:
-			gps_off = gps_off.replace(" ", "")
+			gps_off = self.forgeNewFrame("04", "1303", "000060")
 			gps_off = gps_off.decode('hex')
 
 			self.printAsProof("-----> GPS Position OFF", "blue")
@@ -259,135 +366,139 @@ class ModemTest():
 
 			self.serport.write(gps_off)
 
+
 	# 1305 SEND SMS
 	def send_cmd_sms(self):
-		sms = "88 00 A7 00 03 04 CC 13 05"
+		smsData = ""
 		i=0
 		while i <= len(self.voice_num)-1:
-			sms += self.voice_num[i].encode('hex')
+			smsData += self.voice_num[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 25 - len(self.voice_num):
-			sms += "00"
+			smsData += "00"
 			i+=1
 
 		i=0
 		while i <= len(self.sms_text)-1:
-			sms += self.sms_text[i].encode('hex')
+			smsData += self.sms_text[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 140 - len(self.sms_text):
-			sms += "00"
+			smsData += "00"
 			i+=1
-		sms += "CC A5"
-		sms = sms.replace(" ", "")
+		
+		sms = self.forgeNewFrame("04", "1305", smsData)
 		sms = sms.decode('hex')
-		print("-----> Send SMS")
+
+		self.printAsProof("-----> Send SMS", "blue")
+		self.printAsProof(sms.encode('hex'), "blue")
+
 		self.serport.write(sms)
-		print colored(sms.encode('hex'), "blue")
+
 
 	# 1306 SET CONFIG
 	def send_cmd_set_config(self):
-		config = "88 00 EA 00 03 04 CC 13 06"
 		i=0
 		while i <= len(self.ip_server)-1:
-			config += self.ip_server[i].encode('hex')
+			configData += self.ip_server[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 20 - len(self.ip_server):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
 
 		#apn
 		i=0
 		while i <= len(self.apn)-1:
-			config+= self.apn[i].encode('hex')
+			configData+= self.apn[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 32 - len(self.apn):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
 
 		#url
 		i=0
 		while i <= len(self.url_server)-1:
-			config += self.url_server[i].encode('hex')
+			configData += self.url_server[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 64 - len(self.url_server):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
 
 		#port
 		i=0
 		while i <= len(self.port_server)-1:
-			config += self.port_server[i].encode('hex')
+			configData += self.port_server[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 4 - len(self.port_server):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
 
 		#acc
 		i=0
 		while i <= len(self.login)-1:
-			config += self.login[i].encode('hex')
+			configData += self.login[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 32 - len(self.login):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
 
 		#pwd
 		i=0
 		while i <= len(self.password)-1:
-			config += self.password[i].encode('hex')
+			configData += self.password[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 32 - len(self.password):
-			config += '\0'.encode('hex')
+			configData += '\0'.encode('hex')
 			i+=1
+		
 		#voice number
 		i=0
 		while i <= len(self.voice_num)-1:
-			config+= self.voice_num[i].encode('hex')
+			configData += self.voice_num[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 25 - len(self.voice_num):
-			config += "00"
+			configData += "00"
 			i+=1
 
 		#ecall number
 		i=0
 		while i <= len(self.ecall_num)-1:
-			config+= self.ecall_num[i].encode('hex')
+			configData+= self.ecall_num[i].encode('hex')
 			i += 1
 
 		i=0
 		while i < 25 - len(self.ecall_num):
-			config += "00"
+			configData += "00"
 			i+=1
 
-		config += "CC A5"
-		config = config.replace(" ", "")
+		config = self.forgeNewFrame("04", "1306", configData)
 		config = config.decode('hex')
-		print("-----> Set Config")
-		self.serport.write(config)
-		print colored(config.encode('hex'), "blue")
 
-	# 1307 Wait Data
+		self.printAsProof("-----> Set Config [1306]", "blue")
+		self.printAsProof(config.encode('hex'), "blue")
+
+		self.serport.write(config)
+
+	# 1307 wait_dataWait Data
 	def send_cmd_wait_data(self):
-		wait_data = "88 00 05 00 03 04 CC 13 07 00 FF 09 CC A5"
-		wait_data = wait_data.replace(" ", "")
+		wait_data = self.forgeNewFrame("04", "1307", "00FF09")
 		wait_data = wait_data.decode('hex')
 
 		self.printAsProof("-----> GET_DATA_FRAME [1307]", "blue")
@@ -397,87 +508,115 @@ class ModemTest():
 
 	#1309
 	def send_cmd_get_config(self):
-		get_config = "88 00 02 00 03 04 CC 13 09 CC A5"
-		get_config = get_config.replace(" ","")
+		get_config = self.forgeNewFrame("04", "1309", "")
 		get_config = get_config.decode('hex')
-		print("-----> Get init settings [1309]")
+
+		self.printAsProof("-----> Get init settings [1309]", "blue")
+		self.printAsProof(get_config.encode('hex'), "blue")
+
 		self.serport.write(get_config)
-		print get_config.encode('hex')
 
 	 # 1356 GET MODEM GET MODEM STATUS
 	def send_cmd_get_modem_status(self):
-		get_modem_status = "88 00 02 00 03 04 CC 13 56 CC A5"
-		get_modem_status = get_modem_status.replace(" ", "")
+		get_modem_status = self.forgeNewFrame("04", "1356", "")
 		get_modem_status = get_modem_status.decode('hex')
-		print("-----> Get Modem Status [1356]")
+
+		self.printAsProof("-----> Get Modem Status [1356]", "blue")
+		self.printAsProof(get_modem_status.encode('hex'), "blue")
+
 		self.serport.write(get_modem_status)
-		print colored(get_modem_status.encode('hex'), "blue")
 
 	# 1357 GET Ecall Data
 	def send_cmd_get_ecall_data(self):
-		get_ecall_data = "88 00 02 00 03 04 CC 13 57 CC A5"
-		get_ecall_data = get_ecall_data.replace(" ", "")
+		get_ecall_data = self.forgeNewFrame("04", "1357", "")
 		get_ecall_data = get_ecall_data.decode('hex')
-		print("-----> Get Ecall Data [1357]")
+
+		self.printAsProof("-----> Get Ecall Data [1357]", "blue")
+		self.printAsProof(get_ecall_data.encode('hex'), "blue")
+
 		self.serport.write(get_ecall_data)
-		print colored(get_ecall_data.encode('hex'), "blue")
+
 
 	# 13AA SEND Data
-	def send_cmd_get_xml_file(self):
+	def send_cmd_get_xml_file(self, manifest=True):
+		if manifest == False:
+			data = self.get_xml_file
+			filName = self.xml_file
+		else:
+			data = self.get_manifest
+			filName = "manifest"
+
+		self.get_xml_file_proof(data, filName)
+
 		self.RXdataMode = True
 		self.RXpart = 0
 		self.RXstart = int(time.time())
-		self.filebin = open("from_sema/%d_%s.xml"%(int(time.time()), self.xml_file), "wb")
-		print colored(self.filebin, "magenta")
+		self.filebin = open("proof/%d_Device_%s.xml"%(int(time.time()), filName), "wb")
 
-		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
-		datalen = len(self.get_xml_file)
+		datalen = len(data)
 		len_hex = hex(datalen)[2:]
 		len_hex = '{:0>4}'.format(len_hex)
-		request = ""
-		request += data_frame_header
-		request += len_hex
+
+		requestData = len_hex
+
 		i=0
-		while i <= len(self.get_xml_file)-1:
-			request += self.get_xml_file[i].encode('hex')
+		while i <= len(data)-1:
+			requestData += data[i].encode('hex')
 			i += 1
-		request += "CC A5"
-		request = request.replace(" ", "")
+
+		request = self.forgeNewFrame("04", "13AA", requestData)
 		request = request.decode('hex')
-		print("-----> Send Resquest \n %s")%(self.get_xml_file)
+
+		self.printAsProof("-----> Send Resquest [13AA] : %s"%(data), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
 		self.serport.write(request)
-		print colored(request.encode('hex'), "blue")
+		self.waitServerResponse()
+
+
+	def get_xml_file_proof(self, link, fileName="XML"):
+		url = link.split(" ")[1]
+
+		self.printAsProof("-----> GET XML file from desktop for comparison : URL %s -- File proof/%d_Desktop_%s.xml"%(url, self.time_start, fileName), "magenta")
+
+		proof = open("proof/%d_Desktop_%s.xml"%(self.time_start, fileName), "wb")
+		proof.write(urllib2.urlopen(url).read())
+		proof.close()
+		self.printAsProof("<----- GET XML file from desktop --- Received proof --- file proof/%d_Desktop_%s.xml"%(self.time_start, fileName), "magenta")
+
 
 
 	# Directly downloads from the server without using GSM, for later comparison
 	def get_bin_file_proof(self):
 		url = self.get_bin_file.split(" ")[1]
-		print colored(url, 'blue')
+		
+		self.printAsProof("-----> GET BIN file from desktop for comparison : URL %s -- File proof/%d_Desktop_%s"%(url, self.time_start, self.bin_file), "magenta")
+
 		proof = open("proof/%d_Desktop_%s"%(self.time_start, self.bin_file), "wb")
 		proof.write(urllib2.urlopen(url).read())
 		proof.close()
+		self.printAsProof("<----- GET BIN file from desktop --- Received proof --- file proof/%d_Desktop_%s"%(self.time_start, self.bin_file), "magenta")
 
 	# 13AA SEND Data
 	def send_cmd_get_bin_file(self):
 		self.RXdataMode = True
 		self.RXpart = 0
 		self.RXstart = int(time.time())
-		self.filebin = open("proof/%d_Device_%s"%(self.time_start, self.bin_file), "wb")
-		print colored(self.filebin, "magenta")
 
-		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
+		self.filebin = open("proof/%d_Device_%s"%(self.time_start, self.bin_file), "wb")
+		self.printAsProof("GET binary file proof directly from server (%s)"%(self.filebin), "magenta")
+
 		datalen = len(self.get_bin_file)
 		len_hex = hex(datalen)[2:]
 		len_hex = '{:0>4}'.format(len_hex)
-		request = ""
-		request += data_frame_header
-		request += len_hex
+		
+		requestData = len_hex
 		i=0
 		while i <= len(self.get_bin_file)-1:
-			request += self.get_bin_file[i].encode('hex')
+			requestData += self.get_bin_file[i].encode('hex')
 			i += 1
-		request += "CC A5"
-		request = request.replace(" ", "")
+		
+		request = self.forgeNewFrame("04", "13AA", requestData)
 		request = request.decode('hex')
 
 		self.printAsProof("-----> Send Resquest GET : %s"%(self.get_bin_file), "blue")
@@ -487,52 +626,83 @@ class ModemTest():
 
 	# 13AA SEND Data
 	def send_cmd_get_info(self):
-		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
+		# First get a proof directly from desktop
+		url = self.get_info.split(" ")[1]
+		
+		self.printAsProof("-----> GET INFO from desktop for comparison : URL %s"%(url), "magenta")
+		self.printAsProof("<----- GET INFO from desktop --- Received proof --- %s"%(urllib2.urlopen(url).read()), "magenta")
+
 		datalen = len(self.get_info)
 		len_hex = hex(datalen)[2:]
 		len_hex = '{:0>4}'.format(len_hex)
-		request = ""
-		request += data_frame_header
-		request += len_hex
+		
+		requestData = len_hex
 		i=0
 		while i <= len(self.get_info)-1:
-			request += self.get_info[i].encode('hex')
+			requestData += self.get_info[i].encode('hex')
 			i += 1
-		request += "CC A5"
-		request = request.replace(" ", "")
+		
+		request = self.forgeNewFrame("04", "13AA", requestData)
 		request = request.decode('hex')
 
-		self.printAsProof("-----> Send Resquest GET : %s"%(self.get_info), "blue")
+		self.printAsProof("-----> Send GET INFO : %s"%(self.get_info), "blue")
 		self.printAsProof(request.encode('hex'), "blue")
 
 		self.serport.write(request)
+		self.waitServerResponse()
 
 	# 13AA SEND Data
-	def send_cmd_put_autotest(self):
-		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
-		datalen = len(self.put_autotest)
+	def send_cmd_post_autotest(self):
+		#self.filebin = open("to_sema/autotestHTML.html", 'r')
+
+		contentLen = os.stat("to_sema/autotestHTML.html").st_size
+
+		contentHTTP = self.post_autotest
+		contentHTTP += "Content-Length: %d\r\n\r\n"%(contentLen)
+
+		datalen = len(contentHTTP)
 		len_hex = hex(datalen)[2:]
 		len_hex = '{:0>4}'.format(len_hex)
-		request = ""
-		request += data_frame_header
-		request += len_hex
+
+		requestData = len_hex
 		i=0
-		while i <= len(self.put_autotest)-1:
-			request += self.put_autotest[i].encode('hex')
+		while i < len(contentHTTP):
+			requestData += contentHTTP[i].encode('hex')
 			i += 1
-		request += "CC A5"
-		request = request.replace(" ", "")
+
+		request = self.forgeNewFrame("04", "13AA", requestData)
 		request = request.decode('hex')
 
-		self.printAsProof("-----> Send Resquest PUT : %s"%(self.put_autotest), "blue")
+		self.printAsProof("-----> Send Resquest POST : %s"%(contentHTTP), "blue")
 		self.printAsProof(request.encode('hex'), "blue")
 
 		self.serport.write(request)
+		self.waitServerResponse()
+
+	def send_cmd_put_keepalive(self):
+		datalen = len(self.put_keepalive)
+		len_hex = hex(datalen)[2:]
+		len_hex = '{:0>4}'.format(len_hex)
+
+		requestData = len_hex
+		i=0
+		while i <= len(self.put_keepalive)-1:
+			requestData += self.put_keepalive[i].encode('hex')
+			i += 1
+
+		request = self.forgeNewFrame("04", "13AA", requestData)
+		request = request.decode('hex')
+
+		self.printAsProof("-----> Send Resquest PUT : %s"%(self.put_keepalive), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
+		self.serport.write(request)
+		self.waitServerResponse()
 
 
 	def send_cmd_put_card_bin(self):
 		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
-		self.put_card_bin += "\r\nContent-Length: "
+		self.put_card_bin += "Content-Length: "
 		self.put_card_bin += "%d"%(os.stat(self.PutFile).st_size)
 		self.put_card_bin += "\r\n\r\n"
 		request = ""
@@ -597,7 +767,8 @@ class ModemTest():
 			elif "13aa get info" in inp or "13AA get info" in inp:
 				self.send_cmd_get_info()
 			elif "13aa post" in inp:
-				self.send_cmd_put_autotest()
+				self.PutRequest_SendAutotest()
+				#self.send_cmd_post_autotest()*$
 			elif "13aa put" in inp:
 				self.PutRequest_SendFiles()
 			else :
@@ -609,13 +780,96 @@ class ModemTest():
 	def manage_orders(self):
 		self.orderToPerform = ""
 		while True:
-			if "TX" in self.orderToPerform:
+			if "TXCARDBIN" in self.orderToPerform:
 				self.PutRequest_SendFiles()
 				self.orderToPerform = ""
 
+			if "TXTEST" in self.orderToPerform:
+				self.PutRequest_SendAutotest()
+				#self.send_cmd_post_autotest()
+				self.orderToPerform = ""
+
+			if "TXKALIVE" in self.orderToPerform:
+				self.send_cmd_put_keepalive()
+				self.orderToPerform = ""
+
+	def PutRequest_SendAutotest(self):
+		self.TXautotestMode = True
+
+		self.send_cmd_post_autotest()
+		self.continueResult = False
+
+		i=0
+		while(self.continueResult == False):
+			time.sleep(1)
+			i+=1
+			if(i > 10):
+				i=0
+				self.send_cmd_post_autotest()
+
+		myfile = open(self.AutotestFile, 'r')
+		content = myfile.read(62)
+
+		while len(content) > 0:
+			self.dataAckResult = False
+
+			request = self.forgeBinaryFrame(content)
+			request = request.decode('hex')
+
+			self.printAsProof("-----> Send Resquest POST : %s"%(content), "blue")
+			self.printAsProof(request.encode('hex'), "blue")
+
+			self.serport.write(request)
+
+			i=0
+			while self.dataAckResult == False:
+				time.sleep(self.TXdelay)
+				i+=1
+				if(i > 5):
+					i=0
+					fails+=1
+
+					self.printAsProof("Send Resquest POST FAIL!!! (%d)"%(fails), "red")
+					
+					self.serport.write(request)
+					#self.dataAckResult = True
+
+			content = myfile.read(1024)
+
+
+		request = self.forgeBinaryFrame("")
+		request = request.decode('hex')
+
+		while self.dataAckResult == False:
+			time.sleep(self.TXdelay)
+			i+=1
+			if(i > 5):
+				i=0
+				fails+=1
+				
+				self.printAsProof("Send Resquest POST FAIL!!! (%d)"%(fails), "red")
+				
+				self.serport.write(request)
+
+
+		self.printAsProof("-----> Send Resquest POST : %s"%(content), "blue")
+		self.printAsProof(request.encode('hex'), "blue")
+
+		self.serport.write(request)
+
+
+		self.printAsProof("File send ended", "yellow")
+
+		time.sleep(3)
+		self.send_cmd_wait_data()
+
+		self.TXautotestMode = False
+
+
+
 
 	def PutRequest_SendFiles(self):
-		start = int(time.time()) #Considered as the reference time for beginning tests
+		start = int(time.time()) # Considered as the reference time for beginning tests
 
 		self.TXcardbinMode = True
 
@@ -634,35 +888,27 @@ class ModemTest():
 		myfile = open(self.PutFile, 'r')
 
 		comm = ""
-		content = ""
-		content =  myfile.read(1024)
+		content = myfile.read(1024)
 		
 		part = 0
 		fails = 0
 
-		data_frame_header = "88 00 0B 00 03 04 CC 13 AA"
 
-		# Send more XXXXXXXXXXXXXXXXXXX
+
 		while len(content) > 0:
-			comm = data_frame_header.replace(" ", "").decode('hex')
+			comm = self.forgeBinaryFrame(content)
+			comm = request.decode('hex')
 
-			len_hex = hex(len(content))[2:]
-			len_hex = '{:0>4}'.format(len_hex)
-			comm += len_hex.decode('hex')
-
-			comm += content
-			comm += "CCA5".decode('hex')
-
-			print colored("PUT %s : File part %d / %d ;; %d fails ;; %d seconds elapsed"%(self.PutFile, part, (os.stat(self.PutFile).st_size) / 1024, fails, int(time.time()) - start ), 'red')
-			print colored(len(content), 'blue')
-			print colored(comm.encode('hex'), 'yellow')
+			self.printAsProof("-----> PUT File part : %s"%(content), "blue")
+			self.printAsProof(comm.encode('hex'), "blue")
 
 			self.displayClass.UpdatePortion((part*100)/((os.stat(self.PutFile).st_size) / 1024))
 
 			self.serport.write(comm)
 
 			content = ""
-			content =  myfile.read(1024)
+			content = myfile.read(1024)
+
 			part+=1
 			i=0
 
@@ -672,19 +918,35 @@ class ModemTest():
 				if(i > 5):
 					i=0
 					fails+=1
-					print colored("!!! FAIL !!! %d"%(fails), 'magenta')
+
+					self.printAsProof("PUT File part FAIL!!! (%d)"%(fails), "magenta")
 					
 					self.serport.write(comm)
 					#self.dataAckResult = True
 
 			self.dataAckResult = False
 
-		print colored("File send ended after %d seconds"%(int(time.time()) - start), 'yellow')
+		self.printAsProof("File send ended after %d seconds"%(int(time.time()) - start), 'yellow')
 
 		time.sleep(3)
 		self.send_cmd_wait_data()
 
 		self.TXcardbinMode = False
+
+
+	# Method called when a server response is needed 
+	def waitServerResponse(self):
+		#self.send_cmd_wait_data()
+		#timeout = time.time()
+
+		#print "Wait Server Response .... "
+
+		#while 0 < self.httpResponseCode and timeout + 30 > time.time():
+		#	pass
+
+		self.responseNeeded = True
+		#return
+
 
 	def manage_response(self, myframe, mystate):
 		ticks = time.time()
@@ -775,7 +1037,7 @@ class ModemTest():
 
 					print("E-call com duration   :  %s"%(myframe[10].encode('hex')))
 					print("Voice call duration   :  %s"%(myframe[12].encode('hex')))
-					print("Amount of transf  data:  %s"%(myframe[14].encode('hex')))
+					print("Amount of transf data :  %s"%(myframe[14].encode('hex')))
 					print("Network strenght      :  %s"%(myframe[16].encode('hex')))
 					print("Network provider      :  %s"%(myframe[17:17+32]))
 
@@ -833,55 +1095,79 @@ class ModemTest():
 					self.printAsProof("<----- GSMDATA_SEND_DATA_ACK [13aa]", "yellow")
 					self.printAsProof(myframe.encode('hex'), "yellow")
 
-					if(self.TXcardbinMode == True):
+					if self.TXcardbinMode == True:
 						self.dataAckResult = True
-						print colored("Ack received", "magenta")
+						print colored("Cardbin Ack received", "magenta")
+					elif self.TXautotestMode == True:
+						self.dataAckResult = True
+						print colored("Autotest Ack received", "magenta")
 					
-					if self.frame_counter == 0 :
-						time.sleep(5)
+					#if self.frame_counter == 0 :
+					if self.responseNeeded:
+						time.sleep(3) #Wait for the ack to be received first
 						self.send_cmd_wait_data()
 
 				elif myframe.encode('hex')[16] == 'a' and myframe.encode('hex')[17] == 'b':
 					self.printAsProof("<----- GSMDATA_SLAVE_TO_MASTER [13ab]", "yellow")
 					self.printAsProof(myframe.encode('hex'), "yellow")
 
+					posHTTP = myframe.find("HTTP/1")
+					if posHTTP >= 0 :
+						posHTTP += len("HTTP/1") + 2
+						self.httpResponseCode = int(myframe[posHTTP:posHTTP+4])
+						self.printAsProof("HTTP response %d : %s"%(self.httpResponseCode, myframe[posHTTP+4:]), "yellow")
+						
+						self.responseNeeded = False
+						self.HTTPattempts = 0
+
+
 					a1=myframe[9].encode('hex')+myframe[10].encode('hex');#+myframe[41].encode('hex')+myframe[42].encode('hex')
 					t=int(a1,16)
 					if(t>0):
 						if(self.RXpart == 0 and self.RXdataMode == True):
 							myResponse = myframe[11:11+t]
-							header = myResponse.split('\r\n\r\n')[0]
 
-							data = myResponse.split('\r\n\r\n')[1]
-							self.filebin.write(data)
+							if len(myResponse.split('\r\n\r\n')) > 1:
+								header = myResponse.split('\r\n\r\n')[0]
+
+								data = myResponse.split('\r\n\r\n')[1]
+								self.filebin.write(data)
+							else:
+								header = "No header ...."
+								self.filebin.write(myResponse)
 
 							print colored(header, 'magenta')
 							elems = header.split('\r\n')
 							for n in elems:
 								if "Content-Length" in n:
 									self.RXtotlen = int(n.split(" ")[1])
-
-							self.RXpart += 1
-							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart), "magenta")
-
-							self.displayClass.UpdatePortion((self.RXpart*100)/(self.RXtotlen / (t-3)))
-
 						elif(self.RXdataMode == True):
 							self.filebin.write(myframe[11:11+t])
-							self.RXpart += 1
-							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / (t-3), int(time.time()) - self.RXstart), "magenta")
 
-							self.displayClass.UpdatePortion((self.RXpart*100)/(self.RXtotlen / (t-3)))
+						self.RXpart += 1
+						if self.RXtotlen > 0:
+							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / t, int(time.time()) - self.RXstart), "magenta")
+							self.displayClass.UpdatePortion((self.RXpart*100)/(self.RXtotlen / t))
+						else:
+							self.printAsProof("GET : File part %d / %d ;; %d seconds elapsed"%(self.RXpart, self.RXtotlen / t, int(time.time()) - self.RXstart), "magenta")
+							self.displayClass.UpdatePortion(0)
 						
-						self.frame_counter+= 1
-						if("100 Continue" in myframe and self.TXcardbinMode == True):
+						#self.frame_counter+= 1
+						if ("100 Continue" in myframe) and (self.TXcardbinMode == True or self.TXautotestMode == True):
 							self.continueResult = True
 							self.printAsProof("100 Continue", "yellow")
 						else:
 							self.send_cmd_wait_data()
 					else:
-						self.frame_counter = 0
-						self.printAsProof("13ab len=0", "yellow")
+						self.printAsProof("No data from slave", "yellow")
+
+						if self.responseNeeded:
+							self.HTTPattempts += 1
+							if self.HTTPattempts > 3:
+								self.responseNeeded = False
+							else:
+								time.sleep(1)
+								self.send_cmd_wait_data()
 				else:
 					self.printAsProof("<----- UNKNOWN_FRAME", "yellow")
 					self.printAsProof(myframe.encode('hex'), "yellow")
@@ -906,24 +1192,33 @@ class ModemTest():
 	def setDisplay(self, display):
 		self.displayClass = display
 
-	def launchModemTest(self,serial_port):
-		print ('Attempt establishing serial line connection...')
+	def launchModemProto(self, serial_port, mindelay, version):
+		print colored("Schiller GSM testbench V%s\n"%(version), "magenta")
+
+		if not os.path.exists("proof/"):
+			print colored("No PROOF directory, create it", "red")
+			os.makedirs("proof/")
+
+		print 'Attempt establishing serial line connection...'
 		self.serport = serial.Serial(serial_port, 115200, timeout=0.1)
 		if not self.serport.isOpen():
-			print ('Unable to open serial line', 'red')
+			print colored('Unable to open serial line', 'red')
 			return
 		print colored(self.serport, 'green')
 		self.time_start = time.time()
+
+		self.TXdelay = mindelay
 
 		print ("Start time = %f"%self.time_start)
 		self.displayClass.UpdateConsolePrompt("[0] Schiller GSM testbench ID - %d \n"%(self.time_start))
 
 		self.consoleProofFile = open("proof/%d_consoleProof.data"%(self.time_start), "wb")
 
-		# Thread keybord command
+		# Thread for keybord command
 		keyboardThread = Thread(target=self.manage_command)
 		keyboardThread.start()
 
+		# Thread for GUI actions
 		actionsThread = Thread(target=self.manage_orders)
 		actionsThread.start()
 
@@ -936,15 +1231,15 @@ class ModemTest():
 				response = self.read_frame()
 				if len(response) > 0:
 					currstate = self.manage_response(response, currstate)
+					#if self.responseNeeded == True:
+					#	self.responseNeeded = False
+					#	self.send_cmd_wait_data()
 
 		except KeyboardInterrupt:
-			self.filebin.close()
+			self.ActionShutdown()
 			print("User request : interrupt received, exit")
 			os._exit(-1)
 
-
-	def ActionDisplayVersion(self, version):
-		print colored("Schiller GSM testbench V%s\n"%(version), "magenta")
 
 	def ActionShutdown(self):
 		if self.filebin != None:
@@ -959,9 +1254,16 @@ class ModemTest():
 	def ActionActivateGPS(self):
 		self.send_cmd_gps(1)
 
+	def ActionPutKeepalive(self):
+		self.orderToPerform = "TXKALIVE"
+
 	def ActionPutCardbin(self):
 		#self.PutRequest_SendFiles()
-		self.orderToPerform = "TX"
+		self.orderToPerform = "TXCARDBIN"
+
+	def ActionPostAutotest(self):
+		#self.PutRequest_SendFiles()
+		self.orderToPerform = "TXTEST"
 
 	def ActionGetBinary(self):
 		self.get_bin_file_proof()

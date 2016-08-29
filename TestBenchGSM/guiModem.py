@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 
-__version__ = "0.2"
-
 from threading import Timer
 import time, math, os, sys
 
@@ -48,11 +46,14 @@ class windowControl(Tkinter.Tk):
 
 	ProgressbarVal = 0
 
+	progVersion = "0.0"
 
-	def __init__(self, parent, option=0):
+
+	def __init__(self, parent, version, option=0):
 		Tkinter.Tk.__init__(self, parent)
 		self.parent = parent
-		self.title("FRED PA-1 - GSM demonstrator - V%s"%(__version__))
+		self.progVersion = version
+		self.title("FRED PA-1 - Schiller GSM testbench - V%s"%(self.progVersion))
 
 		self.configPath = ""
 
@@ -240,17 +241,25 @@ class windowControl(Tkinter.Tk):
 		tmpGroup = Tkinter.LabelFrame(actionsGroup, bg='white', bd=0, padx=5, pady=5)
 		tmpGroup.grid(row=row, column=col)
 
-		ButtonGPS = Tkinter.Button(tmpGroup, text="Send Card.bin", command=self.ActionSendFile, font = "Helvetica 14") #state='disabled'
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Send Keepalive", fg="green", command=self.ActionSendKeepalive, font = "Helvetica 14") #state='disabled'
 		ButtonGPS.grid(row=row, column=col, padx=5, pady=10)
 
-		ButtonGPS = Tkinter.Button(tmpGroup, text="Get bin file", command=self.ActionGetBinaryFile, font = "Helvetica 14")
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Send Autotest", fg="green", command=self.ActionSendAutotest, font = "Helvetica 14") #state='disabled'
 		ButtonGPS.grid(row=row, column=col+1, padx=5, pady=10)
 
-		ButtonGPS = Tkinter.Button(tmpGroup, text="Get xml file", command=self.ActionGetConfigFile, font = "Helvetica 14")
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Send Card.bin", command=self.ActionSendCardbin, font = "Helvetica 14") #state='disabled'
 		ButtonGPS.grid(row=row, column=col+2, padx=5, pady=10)
 
-		ButtonGPS = Tkinter.Button(tmpGroup, text="Get infos", command=self.ActionGetInfo, font = "Helvetica 14")
-		ButtonGPS.grid(row=row, column=col+3, padx=5, pady=10)
+		row += 1
+
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Get bin file", command=self.ActionGetBinaryFile, font = "Helvetica 14")
+		ButtonGPS.grid(row=row, column=col, padx=5, pady=10)
+
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Get xml file", fg="red", command=self.ActionGetConfigFile, font = "Helvetica 14")
+		ButtonGPS.grid(row=row, column=col+1, padx=5, pady=10)
+
+		ButtonGPS = Tkinter.Button(tmpGroup, text="Get infos", fg="green", command=self.ActionGetInfo, font = "Helvetica 14")
+		ButtonGPS.grid(row=row, column=col+2, padx=5, pady=10)
 
 
 		tmpGroup = Tkinter.LabelFrame(actionsGroup, bg='white', bd=0, padx=5, pady=5)
@@ -280,10 +289,7 @@ class windowControl(Tkinter.Tk):
 		self.consolePrompt = Tkinter.Text(consoleGroup, height=22, width=75)
 		self.consolePrompt.grid(row=row, column=col)
 
-		self.consolePrompt.insert(Tkinter.INSERT, "Schiller GSM testbench V%s\n"%(__version__))
-
-
-		
+		self.consolePrompt.insert(Tkinter.INSERT, "Schiller GSM testbench V%s\n"%(self.progVersion))
 
 
 	def reloadImage(self, myimage, box):
@@ -291,6 +297,7 @@ class windowControl(Tkinter.Tk):
 		self.image_label = Tkinter.Label(box, image=self.mapImage)
 		self.image_label.grid(row=2, column=1)
 		self.grid()
+
 
 	def getDefiMap(self):
 		googleMapRequest = "http://maps.google.com/maps/api/staticmap?size=%dx%d&format=png&maptype=roadmap&markers=label:S|color:red|Wissembourg"%(self.sizeMapX, self.sizeMapY)
@@ -309,6 +316,7 @@ class windowControl(Tkinter.Tk):
 
 		return img
 
+
 	def EnterPressed(self, event):
 		print "Enter!"
 		#self.latitudeGPS -= 0.010
@@ -320,9 +328,9 @@ class windowControl(Tkinter.Tk):
 		self.myprogressbar['maximum'] = 100
 		self.myprogressbar['value'] = self.ProgressbarVal
 
+
 	def setModem(self, modem):
 		self.modemClass = modem
-		self.ActionProvideVersion()
 
 
 	# Methods used by the modem to update status
@@ -348,6 +356,7 @@ class windowControl(Tkinter.Tk):
 			self.datacallText.set("Disconnected")
 			self.datacallStatus['fg']='red' # couleur de fond
 
+
 	def UpdateGPScoordinates(self, lati, longi, satellites):
 		if lati != 0 and longi != 0 and lati < 180 and longi < 180:
 			self.latitudeGPS = lati - self.movement
@@ -365,6 +374,7 @@ class windowControl(Tkinter.Tk):
 
 		self.reloadImage(self.getDefiMap(), self.trackGroup)
 
+
 	def UpdateGPSstatus(self, status):
 		if status == True:
 			self.statusGPStext.set("Activated")
@@ -375,27 +385,35 @@ class windowControl(Tkinter.Tk):
 
 		#TODO : Add color
 
+
 	def UpdatePortion(self, val):
 		self.myprogressbar['maximum'] = 100
 		self.myprogressbar['value'] = val
+
 
 	def UpdateConsolePrompt(self, text):
 		self.consolePrompt.insert(Tkinter.INSERT, text)
 
 
 	# Methods used by the display to pilot modem
-	def ActionProvideVersion(self):
-		self.modemClass.ActionDisplayVersion(__version__)
-
 	def ActionConnectGPS(self):
 		self.modemClass.ActionActivateGPS()
 
 	def ActionDisconnect(self):
 		self.modemClass.ActionShutdown()
 
-	def ActionSendFile(self):
+	# PUT / POST actions
+	def ActionSendKeepalive(self):
+		self.modemClass.ActionPutKeepalive()
+
+	def ActionSendAutotest(self):
+		self.modemClass.ActionPostAutotest()
+
+	def ActionSendCardbin(self):
 		self.modemClass.ActionPutCardbin()
 
+
+	# GET actions
 	def ActionGetBinaryFile(self):
 		self.modemClass.ActionGetBinary()
 
